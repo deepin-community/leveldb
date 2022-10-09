@@ -1,0 +1,68 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+include /usr/share/dpkg/architecture.mk
+
+CPPFLAGS:=$(shell dpkg-buildflags --get CPPFLAGS) -fPIC
+CXXFLAGS:=$(shell dpkg-buildflags --get CXXFLAGS)
+CFLAGS:=$(shell dpkg-buildflags --get CFLAGS)
+
+export CXXFLAGS+=$(CPPFLAGS)
+export CFLAGS+=$(CPPFLAGS)
+
+export DESTDIR=debian/tmp
+export PREFIX=/usr
+export LIBDIR=lib/$(DEB_HOST_MULTIARCH)
+
+ifneq (,$(filter noopt,$(DEB_BUILD_OPTIONS)))
+    OPT=-O0
+else
+    OPT=-O2
+endif
+
+export OPT += -g -DNDEBUG
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+	dh_auto_configure -Bobj-$(DEB_HOST_GNU_TYPE)/out-static
+	dh_auto_configure -Bobj-$(DEB_HOST_GNU_TYPE)/out-shared -- -DBUILD_SHARED_LIBS=ON
+
+override_dh_auto_build:
+	dh_auto_build -Bobj-$(DEB_HOST_GNU_TYPE)/out-static
+	dh_auto_build -Bobj-$(DEB_HOST_GNU_TYPE)/out-shared
+
+override_dh_auto_install:
+	dh_auto_install -Bobj-$(DEB_HOST_GNU_TYPE)/out-static
+	dh_auto_install -Bobj-$(DEB_HOST_GNU_TYPE)/out-shared
+
+override_dh_installdocs:
+	dh_installdocs
+	echo "Convert md files to HTML"
+	for md in `ls debian/leveldb-doc/usr/share/doc/leveldb-doc/*.md`; do \
+		html=`echo $${md} | cut -d. -f1`.html; \
+		markdown $${md} >$${html}; \
+	done
+
+override_dh_auto_test:
+ifeq ($(DEB_HOST_ARCH),mips)
+	@echo "======== will not abort on test(s) failure ========"
+	dh_auto_test --no-parallel -Bobj-$(DEB_HOST_GNU_TYPE)/out-static \
+		|| true
+	dh_auto_test --no-parallel -Bobj-$(DEB_HOST_GNU_TYPE)/out-shared \
+	       	|| true
+else
+	dh_auto_test --no-parallel -Bobj-$(DEB_HOST_GNU_TYPE)/out-static
+	dh_auto_test --no-parallel -Bobj-$(DEB_HOST_GNU_TYPE)/out-shared
+endif
+
+get-orig-source:
+	debian/get-git-source.sh
+
+.PHONY: override_dh_auto_configure override_dh_auto_build \
+       	override_dh_auto_install override_dh_installdocs \
+	override_dh_auto_test
